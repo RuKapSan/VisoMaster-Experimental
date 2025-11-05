@@ -191,42 +191,42 @@ class InputFacesLoaderWorker(qtc.QThread):
             self.main_window.buttonMediaPlay.click()
         else:
             was_playing = False
+
+        # Collect models to load
         if not models_processor.models[detect_model]:
-            models_processor.models[detect_model] = models_processor.load_model(
-                detect_model
-            )
             models_to_load.append(detect_model)
         if (
             not models_processor.models[landmark_detect_model]
             and control["LandmarkDetectToggle"]
         ):
-            models_processor.models[landmark_detect_model] = (
-                models_processor.load_model(landmark_detect_model)
-            )
             models_to_load.append(landmark_detect_model)
-        for recognition_model in [
+
+        # Add recognition models
+        recognition_models = [
             "Inswapper128ArcFace",
             "SimSwapArcFace",
             "GhostArcFace",
             "CSCSArcFace",
             "CSCSIDArcFace",
             "CanonSwapArcFace",
-        ]:
+        ]
+        for recognition_model in recognition_models:
             if not models_processor.models[recognition_model]:
-                models_processor.models[recognition_model] = (
-                    models_processor.load_model(recognition_model)
-                )
                 models_to_load.append(recognition_model)
+
+        # Load all models in parallel
+        if models_to_load:
+            print(f"Starting parallel loading of {len(models_to_load)} models: {models_to_load}")
+            loaded_models = models_processor.load_models_parallel(models_to_load, max_workers=4)
+
+            # Update models_to_unload list
+            for model_name in models_to_load:
+                if model_name in loaded_models:
+                    self.models_to_unload.append(model_name)
+                    print(f"Model loaded and queued for unload: {model_name}")
+
         if was_playing:
             self.main_window.buttonMediaPlay.click()
-
-        for model_name in models_to_load:
-            models_processor.models[model_name] = models_processor.load_model(
-                model_name
-            )
-            self.models_to_unload.append(
-                model_name
-            )  # Add to list of models to unload later
 
     def run(self):
         if self.folder_name or self.files_list:

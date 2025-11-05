@@ -4,6 +4,7 @@ import subprocess as sp
 import gc
 import traceback
 from typing import Dict, TYPE_CHECKING, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from packaging import version
 import numpy as np
@@ -508,6 +509,49 @@ class ModelsProcessor(QtCore.QObject):
                 return model_instance
             finally:
                 self.main_window.model_loaded_signal.emit()
+
+    def load_models_parallel(self, model_names: list, max_workers: int = 4):
+        """
+        Load multiple models in parallel using ThreadPoolExecutor.
+
+        Args:
+            model_names (list): List of model names to load
+            max_workers (int): Maximum number of worker threads (default: 4)
+
+        Returns:
+            dict: Dictionary with model names as keys and loaded models as values
+        """
+        loaded_models = {}
+        self.main_window.model_loading_signal.emit()
+
+        try:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all loading tasks
+                future_to_model = {
+                    executor.submit(self.load_model, model_name): model_name
+                    for model_name in model_names
+                    if not self.models.get(model_name)  # Skip already loaded models
+                }
+
+                # Collect results as they complete
+                for future in as_completed(future_to_model):
+                    model_name = future_to_model[future]
+                    try:
+                        model_instance = future.result()
+                        loaded_models[model_name] = model_instance
+                        print(f"Parallel loading completed for: {model_name}")
+                    except Exception as e:
+                        print(f"Error loading model {model_name}: {e}")
+                        traceback.print_exc()
+
+            # Add already loaded models to result
+            for model_name in model_names:
+                if model_name not in loaded_models and self.models.get(model_name):
+                    loaded_models[model_name] = self.models[model_name]
+
+            return loaded_models
+        finally:
+            self.main_window.model_loaded_signal.emit()
 
     def load_dfm_model(self, dfm_model):
         with self.model_lock:
